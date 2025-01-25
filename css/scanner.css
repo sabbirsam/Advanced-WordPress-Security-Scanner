@@ -1,0 +1,90 @@
+.security-scanner-dashboard {
+    max-width: 1000px;
+}
+
+.scan-progress {
+    margin: 15px 0;
+    background-color: #f0f0f0;
+    height: 30px;
+    position: relative;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #4CAF50;
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.scan-results-container li.error {
+    color: red;
+}
+
+.scan-results-container li.success {
+    color: green;
+}
+
+#scan-history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.status-error {
+    color: red;
+}
+
+.status-success {
+    color: green;
+}
+
+
+/* Scan result individual  */
+.scan-results-container {
+    padding: 20px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.scan-result {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #fff;
+}
+
+.scan-result h3 {
+    margin: 0 0 10px;
+    color: #333;
+}
+
+.scan-result p {
+    margin: 5px 0;
+}
+
+.scan-details h4 {
+    margin-top: 15px;
+}
+
+.core-details,
+.log-details {
+    margin-top: 10px;
+}
+
+.core-details ul,
+.log-details ul {
+    padding-left: 20px;
+}
+
+.log-details li {
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
