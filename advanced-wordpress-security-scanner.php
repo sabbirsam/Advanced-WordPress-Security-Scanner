@@ -47,6 +47,19 @@ class AdvancedWordPressSecurityScanner {
         'wp_includes' => ABSPATH . WPINC,
         'wp_admin' => ABSPATH . 'wp-admin'
     ];
+
+    private $core_path_mapping = [
+        'wp-includes' => 'wp_includes',
+        'wp-admin' => 'wp_admin',
+        'wp-config.php' => 'wp_config',
+        '.htaccess' => 'htaccess',
+        'mu-plugins' => 'mu_plugins',
+        'uploads' => 'uploads',
+        'plugins' => 'plugins',
+        'themes' => 'themes',
+        'core' => 'core'
+    ];
+
     private $security_patterns = [
         'dangerous_functions' => [
             'base64_decode', 'eval(', 'system(', 'exec(', 
@@ -240,15 +253,47 @@ class AdvancedWordPressSecurityScanner {
         
         $paths = array_keys($this->scan_paths);
         $current_path = $paths[$scan_data['current_path_index']];
-        $files = $this->get_all_files($this->scan_paths[$current_path]);
-        
-        $batch_end = min($scan_data['current_file_offset'] + $this->batch_size, count($files));
         $exclusions = $this->get_scan_exclusions();
+
+        error_log('Processing path: ' . $current_path);
+        error_log('Exclusions: ' . print_r($exclusions, true));
+
+        // Check if current path type is completely excluded
+        if ($this->is_path_type_excluded($current_path, $exclusions)) {
+            error_log('Path excluded, skipping: ' . $current_path);
+            // Skip this path entirely
+            $scan_data['completed_paths'][] = $current_path;
+            $scan_data['current_path_index']++;
+            $scan_data['current_file_offset'] = 0;
+            
+            $skipped_files = count($this->get_all_files($this->scan_paths[$current_path]));
+            $scan_data['processed_files'] += $skipped_files;
+            
+            update_option($this->scan_session_key . '_' . $session_id, $scan_data);
+            
+            $is_core_complete = $scan_data['current_path_index'] >= count($paths);
+            $progress = ($scan_data['processed_files'] / $scan_data['total_files']) * 50;
+            
+            return [
+                'type' => 'progress',
+                'phase' => 'core_files',
+                'progress' => $progress,
+                'current_path' => $current_path,
+                'processed_files' => $scan_data['processed_files'],
+                'total_files' => $scan_data['total_files'],
+                'is_complete' => $is_core_complete,
+                'message' => "Skipping excluded path {$current_path}"
+            ];
+        }
+
+        // Get files for current path
+        $files = $this->get_all_files($this->scan_paths[$current_path]);
+        $batch_end = min($scan_data['current_file_offset'] + $this->batch_size, count($files));
         
         for ($i = $scan_data['current_file_offset']; $i < $batch_end; $i++) {
             if (isset($files[$i])) {
                 $file = $files[$i];
-                if (!$this->is_file_excluded($file, $exclusions)) {
+                if (!$this->should_exclude_file($file, $current_path, $exclusions)) {
                     $issues = $this->check_file_security($file, $exclusions);
                     if (!empty($issues)) {
                         $scan_data['issues'][] = [
@@ -272,7 +317,7 @@ class AdvancedWordPressSecurityScanner {
         update_option($this->scan_session_key . '_' . $session_id, $scan_data);
         
         $is_core_complete = $scan_data['current_path_index'] >= count($paths);
-        $progress = ($scan_data['processed_files'] / $scan_data['total_files']) * 50; // Core files are 50% of total progress
+        $progress = ($scan_data['processed_files'] / $scan_data['total_files']) * 50;
         
         return [
             'type' => 'progress',
@@ -284,6 +329,167 @@ class AdvancedWordPressSecurityScanner {
             'is_complete' => $is_core_complete,
             'message' => "Scanning {$current_path}"
         ];
+    }
+
+    private function is_path_type_excluded($path_type, $exclusions) {
+        // First, map the path type to its correct exclusion identifier
+        $mapped_path = $path_type;
+        
+        // Debug log to check values
+        error_log('Checking path type: ' . $path_type);
+        error_log('Current exclusions: ' . print_r($exclusions['core_files'], true));
+        
+        // Convert path_type to the format used in exclusions if needed
+        foreach ($this->core_path_mapping as $exclusion_key => $scan_key) {
+            if ($path_type === $scan_key) {
+                $mapped_path = $exclusion_key;
+                break;
+            }
+        }
+        
+        error_log('Mapped path: ' . $mapped_path);
+
+        // Check if the path is excluded
+        if (!empty($exclusions['core_files']) && in_array($mapped_path, $exclusions['core_files'])) {
+            error_log('Path is excluded: ' . $mapped_path);
+            return true;
+        }
+
+        // Special handling for plugins and themes directories
+        switch ($path_type) {
+            case 'plugins':
+                if (!empty($exclusions['core_files']) && in_array('plugins', $exclusions['core_files'])) {
+                    return true;
+                }
+                break;
+            case 'themes':
+                if (!empty($exclusions['core_files']) && in_array('themes', $exclusions['core_files'])) {
+                    return true;
+                }
+                break;
+        }
+
+        error_log('Path is not excluded: ' . $mapped_path);
+        return false;
+    }
+
+    private function should_exclude_file($file, $current_path, $exclusions) {
+
+        error_log('Checking file exclusion: ' . $file);
+        error_log('Current path: ' . $current_path);
+
+        if (!empty($exclusions['core_files'])) {
+            foreach ($exclusions['core_files'] as $excluded_dir) {
+                // Map the excluded directory to its scan path
+                $mapped_dir = $this->core_path_mapping[$excluded_dir] ?? $excluded_dir;
+                
+                if (isset($this->scan_paths[$mapped_dir])) {
+                    $dir_path = $this->scan_paths[$mapped_dir];
+                    if (strpos($file, $dir_path) === 0) {
+                        error_log('File excluded due to core directory exclusion: ' . $excluded_dir);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check if file matches any exclusion patterns
+        if (!empty($exclusions['file_patterns'])) {
+            foreach ($exclusions['file_patterns'] as $pattern) {
+                $pattern = trim($pattern);
+                if (!empty($pattern)) {
+                    // Support both glob and regex patterns
+                    if ($this->is_regex_pattern($pattern)) {
+                        // For regex patterns
+                        if (@preg_match($pattern, $file)) {
+                            error_log('File excluded due to regex pattern: ' . $pattern);
+                            return true;
+                        }
+                    } else {
+                        // For glob patterns
+                        if (fnmatch($pattern, $file)) {
+                            error_log('File excluded due to glob pattern: ' . $pattern);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check if file is in excluded paths
+        if (!empty($exclusions['paths'])) {
+            foreach ($exclusions['paths'] as $path) {
+                $path = trim($path);
+                if (!empty($path)) {
+                    // Convert relative paths to absolute
+                    if (strpos($path, '/') !== 0) {
+                        $path = ABSPATH . $path;
+                    }
+                    
+                    // Normalize paths for comparison
+                    $path = wp_normalize_path($path);
+                    $normalized_file = wp_normalize_path($file);
+                    
+                    if (strpos($normalized_file, $path) === 0) {
+                        error_log('File excluded due to custom path: ' . $path);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Handle plugin-specific exclusions
+        if ($current_path === 'plugins' && !empty($exclusions['plugins'])) {
+            foreach ($exclusions['plugins'] as $plugin) {
+                $plugin = trim($plugin);
+                if (!empty($plugin)) {
+                    $plugin_path = WP_CONTENT_DIR . '/plugins/' . $plugin;
+                    $plugin_path = wp_normalize_path($plugin_path);
+                    $normalized_file = wp_normalize_path($file);
+                    
+                    if (strpos($normalized_file, $plugin_path) === 0) {
+                        error_log('File excluded due to plugin exclusion: ' . $plugin);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Handle theme-specific exclusions
+        if ($current_path === 'themes' && !empty($exclusions['themes'])) {
+            foreach ($exclusions['themes'] as $theme) {
+                $theme = trim($theme);
+                if (!empty($theme)) {
+                    $theme_path = WP_CONTENT_DIR . '/themes/' . $theme;
+                    $theme_path = wp_normalize_path($theme_path);
+                    $normalized_file = wp_normalize_path($file);
+                    
+                    if (strpos($normalized_file, $theme_path) === 0) {
+                        error_log('File excluded due to theme exclusion: ' . $theme);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if (pathinfo($file, PATHINFO_EXTENSION) === 'php' && !empty($exclusions['php_functions'])) {
+            $content = @file_get_contents($file);
+            if ($content !== false) {
+                foreach ($exclusions['php_functions'] as $function) {
+                    $function = trim($function);
+                    if (!empty($function) && stripos($content, $function) !== false) {
+                        error_log('File excluded due to containing excluded PHP function: ' . $function);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function is_regex_pattern($pattern) {
+        return @preg_match('/^\/.*\/[a-zA-Z]*$/', $pattern);
     }
     
     private function process_security_checks_batch($session_id) {
@@ -810,12 +1016,17 @@ class AdvancedWordPressSecurityScanner {
     }
 
     private function get_core_file_directories() {
+        // Update this method to match the format used in the exclusions UI
         return [
-            'wp-admin',
+            'core',
+            '.htaccess',
+            'wp-config.php',
             'wp-includes',
-            'wp-content',
-            'index.php',
-            'wp-config.php'
+            'wp-admin',
+            'mu-plugins',
+            'uploads',
+            'plugins',
+            'themes'
         ];
     }
 
