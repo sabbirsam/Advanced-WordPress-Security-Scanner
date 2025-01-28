@@ -13,7 +13,7 @@ class AdvancedWordPressSecurityScanner {
     private $scan_session_key = 'wps_current_scan_session';
 
 
-    private $scan_history_option = 'wps_security_scan_history_1';
+    private $scan_history_option = 'wps_security_scan_history';
     private $scan_log = [];
     private $exclusion_option = 'wps_security_scan_exclusions';
 
@@ -169,43 +169,7 @@ class AdvancedWordPressSecurityScanner {
         }
     }
 
-    //----------start
 
-    /* public function run_security_scan() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
-        
-        $scan_type = isset($_POST['scan_type']) ? sanitize_text_field($_POST['scan_type']) : 'initialize';
-        $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : null;
-        
-        switch ($scan_type) {
-            case 'initialize':
-                $response = $this->initialize_scan();
-                break;
-            // case 'core_files':
-            //     $response = $this->process_core_files_batch($session_id);
-            //     break;
-            case 'core_files':
-                $response = [
-                    'type' => 'progress',
-                    'phase' => 'core_files',
-                    'progress' => 100,
-                    'is_complete' => true,
-                    'message' => "Core files check completed"
-                ];
-                break;
-            case 'security_checks':
-                $response = $this->process_security_checks_batch($session_id);
-                break;
-            case 'finalize':
-                $response = $this->finalize_scan($session_id);
-                break;
-            default:
-                wp_send_json_error('Invalid scan type');
-        }
-        
-        wp_send_json_success($response);
-    } */
-   
     public function run_security_scan() {
         check_ajax_referer('security_scan_nonce', 'nonce');
         
@@ -403,8 +367,6 @@ class AdvancedWordPressSecurityScanner {
         ];
     }
     
-    //---------------
-
     private function send_progress_update($check_type, $title, $status, $progress) {
         // Ensure progress doesn't exceed 100
         $progress = min(100, max(0, $progress));
@@ -752,8 +714,6 @@ class AdvancedWordPressSecurityScanner {
     }
     
     private function get_known_vulnerable_versions($plugin_name) {
-        // This could be expanded with a regularly updated list from various free sources
-        // Example structure - you should expand this based on publicly disclosed vulnerabilities
         $known_vulnerabilities = [
             'contact-form-7' => [
                 '5.3.1' => [
@@ -767,7 +727,7 @@ class AdvancedWordPressSecurityScanner {
                     'fix' => 'Update to version 17.9 or higher'
                 ]
             ],
-            // Add more known vulnerabilities here
+            // Add more known vulnerabilities here.
         ];
     
         return $known_vulnerabilities[sanitize_title($plugin_name)] ?? [];
