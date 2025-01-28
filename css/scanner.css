@@ -16,6 +16,10 @@
     overflow: hidden;
 }
 
+h1 {
+    text-align: center;
+}
+
 .dashboard-header {
     background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
     color: white;
@@ -66,7 +70,8 @@
 
 .exclusion-settings {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+    /* grid-template-columns: 1fr 1fr; */
     gap: 20px;
     padding: 20px;
     background-color: white;
@@ -77,6 +82,7 @@
     background-color: var(--background-light);
     padding: 20px;
     border-radius: var(--border-radius);
+    margin-bottom: 15px;
 }
 
 .exclusion-section textarea {
@@ -173,6 +179,7 @@
 
     .scan-progress {
         margin-top: 15px;
+        width: 100%;
     }
 
     .button-primary {
@@ -221,6 +228,99 @@
     width: 0;
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+
+.scan-progress-details {
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.current-check {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f3f4f6;
+    border-radius: 6px;
+}
+
+.check-spinner {
+    width: 24px;
+    height: 24px;
+    margin-right: 10px;
+    border: 3px solid #e5e7eb;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.completed-check {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 8px;
+    background: #f0fdf4;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.check-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 10px;
+    background: #22c55e;
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+}
+
+.check-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* .progress-bar {
+    position: relative;
+    overflow: hidden;
+} */
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0) 100%);
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
+}
+
 
 .view-details-btn {
     display: inline-flex;

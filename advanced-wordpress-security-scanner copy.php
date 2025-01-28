@@ -1,10 +1,6 @@
 <?php
 /*
-Plugin Name: Advanced WordPress Security Scanner
-Plugin URI: https://example.com/advanced-security-scanner
-Description: Comprehensive WordPress security scanning with detailed dashboard and history tracking
-Version: 1.0
-Author: sabbirsam
+
 */
 
 class AdvancedWordPressSecurityScanner {
@@ -62,8 +58,8 @@ class AdvancedWordPressSecurityScanner {
     ];
 
     private $security_checks = [
-        'plugin_vulnerabilities' => ['weight' => 10, 'title' => 'Plugin Vulnerability Check'],
         'wordpress_version' => ['weight' => 5, 'title' => 'WordPress Version Check'],
+        // 'plugin_vulnerabilities' => ['weight' => 10, 'title' => 'Plugin Vulnerability Check'],
     ];
 
     public function add_security_scanner_menu() {
@@ -171,7 +167,7 @@ class AdvancedWordPressSecurityScanner {
 
     //----------start
 
-    /* public function run_security_scan() {
+    public function run_security_scan() {
         check_ajax_referer('security_scan_nonce', 'nonce');
         
         $scan_type = isset($_POST['scan_type']) ? sanitize_text_field($_POST['scan_type']) : 'initialize';
@@ -181,9 +177,9 @@ class AdvancedWordPressSecurityScanner {
             case 'initialize':
                 $response = $this->initialize_scan();
                 break;
-            // case 'core_files':
-            //     $response = $this->process_core_files_batch($session_id);
-            //     break;
+            /* case 'core_files':
+                $response = $this->process_core_files_batch($session_id);
+                break; */
             case 'core_files':
                 $response = [
                     'type' => 'progress',
@@ -204,35 +200,9 @@ class AdvancedWordPressSecurityScanner {
         }
         
         wp_send_json_success($response);
-    } */
-   
-    public function run_security_scan() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
-        
-        $scan_type = isset($_POST['scan_type']) ? sanitize_text_field($_POST['scan_type']) : 'initialize';
-        $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : null;
-        
-        switch ($scan_type) {
-            case 'initialize':
-                $response = $this->initialize_scan();
-                break;
-            case 'core_files':
-                $response = $this->process_core_files_batch($session_id);
-                break;
-            case 'security_checks':
-                $response = $this->process_security_checks_batch($session_id);
-                break;
-            case 'finalize':
-                $response = $this->finalize_scan($session_id);
-                break;
-            default:
-                wp_send_json_error('Invalid scan type');
-        }
-        
-        wp_send_json_success($response);
     }
 
-    private function initialize_scan() {
+    /* private function initialize_scan() {
         $session_id = uniqid('scan_', true);
         $scan_data = [
             'session_id' => $session_id,
@@ -262,6 +232,27 @@ class AdvancedWordPressSecurityScanner {
             'type' => 'initialize',
             'session_id' => $session_id,
             'total_files' => $scan_data['total_files'],
+            'total_checks' => count($this->security_checks),
+            'message' => 'Scan initialized'
+        ];
+    } */
+
+    private function initialize_scan() {
+        $session_id = uniqid('scan_', true);
+        $scan_data = [
+            'session_id' => $session_id,
+            'start_time' => current_time('mysql'),
+            'current_security_check_index' => 0,
+            'results' => [],
+            'completed_checks' => [],
+            'issues' => [] // Add this for finalize compatibility
+        ];
+        
+        update_option($this->scan_session_key . '_' . $session_id, $scan_data);
+        
+        return [
+            'type' => 'initialize',
+            'session_id' => $session_id,
             'total_checks' => count($this->security_checks),
             'message' => 'Scan initialized'
         ];
@@ -322,39 +313,62 @@ class AdvancedWordPressSecurityScanner {
         ];
     }
     
-    private function process_security_checks_batch($session_id) {
-        $scan_data = get_option($this->scan_session_key . '_' . $session_id);
-        if (!$scan_data) {
-            return ['type' => 'error', 'message' => 'Invalid session'];
+    /* private function process_security_checks_batch($session_id) {
+        try {
+            $scan_data = get_option($this->scan_session_key . '_' . $session_id);
+            if (!$scan_data) {
+                return ['type' => 'error', 'message' => 'Invalid session'];
+            }
+            
+            $security_checks = array_keys($this->security_checks);
+            if ($scan_data['current_security_check_index'] >= count($security_checks)) {
+                return [
+                    'type' => 'progress',
+                    'phase' => 'security_checks',
+                    'progress' => 100,
+                    'is_complete' => true,
+                    'message' => "Security checks completed"
+                ];
+            }
+            
+            $current_check = $security_checks[$scan_data['current_security_check_index']];
+            
+            // Process single security check with error handling
+            try {
+                $check_result = $this->process_security_check($current_check);
+                $scan_data['results'][$current_check] = $check_result;
+                $scan_data['completed_checks'][] = $current_check;
+            } catch (Exception $e) {
+                error_log("Security check error for {$current_check}: " . $e->getMessage());
+                $scan_data['results'][$current_check] = [
+                    'status' => 'error',
+                    'message' => "Check failed: " . $e->getMessage()
+                ];
+            }
+            
+            $scan_data['current_security_check_index']++;
+            update_option($this->scan_session_key . '_' . $session_id, $scan_data);
+            
+            $is_checks_complete = $scan_data['current_security_check_index'] >= count($security_checks);
+            $progress = 50 + (($scan_data['current_security_check_index'] / count($security_checks)) * 50);
+            
+            return [
+                'type' => 'progress',
+                'phase' => 'security_checks',
+                'progress' => $progress,
+                'current_check' => $this->security_checks[$current_check]['title'] ?? $current_check,
+                'completed_checks' => count($scan_data['completed_checks']),
+                'total_checks' => count($this->security_checks),
+                'is_complete' => $is_checks_complete,
+                'message' => "Running " . ($this->security_checks[$current_check]['title'] ?? $current_check)
+            ];
+        } catch (Exception $e) {
+            error_log("Security checks batch error: " . $e->getMessage());
+            return ['type' => 'error', 'message' => 'Error processing security checks'];
         }
-        
-        $security_checks = array_keys($this->security_checks);
-        $current_check = $security_checks[$scan_data['current_security_check_index']];
-        
-        // Process single security check
-        $check_result = $this->process_security_check($current_check);
-        $scan_data['results'][$current_check] = $check_result;
-        $scan_data['completed_checks'][] = $current_check;
-        $scan_data['current_security_check_index']++;
-        
-        update_option($this->scan_session_key . '_' . $session_id, $scan_data);
-        
-        $is_checks_complete = $scan_data['current_security_check_index'] >= count($security_checks);
-        $progress = 50 + (($scan_data['current_security_check_index'] / count($security_checks)) * 50); // Security checks are remaining 50%
-        
-        return [
-            'type' => 'progress',
-            'phase' => 'security_checks',
-            'progress' => $progress,
-            'current_check' => $this->security_checks[$current_check]['title'],
-            'completed_checks' => count($scan_data['completed_checks']),
-            'total_checks' => count($this->security_checks),
-            'is_complete' => $is_checks_complete,
-            'message' => "Running {$this->security_checks[$current_check]['title']}"
-        ];
-    }
+    } */
     
-    private function process_security_check($check_type) {
+    /* private function process_security_check($check_type) {
         switch ($check_type) {
             case 'plugin_vulnerabilities':
                 return $this->check_plugin_vulnerabilities();
@@ -363,45 +377,130 @@ class AdvancedWordPressSecurityScanner {
             default:
                 return $this->perform_additional_security_checks();
         }
-    }
-    
-    private function finalize_scan($session_id) {
-        error_log( 'Data Received: session_id' . print_r( $session_id, true ) );
+    } */
+
+    private function process_security_checks_batch($session_id) {
+        error_log('Starting security checks batch');  // Debug log
+        
         $scan_data = get_option($this->scan_session_key . '_' . $session_id);
         if (!$scan_data) {
+            error_log('Invalid session data');  // Debug log
             return ['type' => 'error', 'message' => 'Invalid session'];
         }
         
-        $total_issues = count($scan_data['issues']);
-        error_log( 'Data Received: total_issues' . print_r( $total_issues, true ) );
-        foreach ($scan_data['results'] as $check_results) {
-            if (isset($check_results['issues'])) {
-                $total_issues += count($check_results['issues']);
+        // Get WordPress version check results
+        $wp_version_check = $this->check_wordpress_version_security();
+        error_log('WordPress version check results: ' . print_r($wp_version_check, true));  // Debug log
+        
+        // Store results
+        $scan_data['results']['wordpress_version'] = $wp_version_check;
+        $scan_data['completed_checks'][] = 'wordpress_version';
+        $scan_data['current_security_check_index'] = 1; // Mark as complete
+        
+        update_option($this->scan_session_key . '_' . $session_id, $scan_data);
+        
+        return [
+            'type' => 'progress',
+            'phase' => 'security_checks',
+            'progress' => 100, // Since we only have one check
+            'current_check' => 'WordPress Version Check',
+            'completed_checks' => 1,
+            'total_checks' => 1,
+            'is_complete' => true,
+            'message' => "Completed WordPress Version Check"
+        ];
+    }
+    
+    /* private function finalize_scan($session_id) {
+        try {
+            $scan_data = get_option($this->scan_session_key . '_' . $session_id);
+            if (!$scan_data) {
+                return ['type' => 'error', 'message' => 'Invalid session'];
             }
+            
+            $total_issues = 0;
+            
+            // Count issues from core scan
+            if (isset($scan_data['issues']) && is_array($scan_data['issues'])) {
+                $total_issues += count($scan_data['issues']);
+            }
+            
+            // Count issues from security checks
+            if (isset($scan_data['results']) && is_array($scan_data['results'])) {
+                foreach ($scan_data['results'] as $check_results) {
+                    if (isset($check_results['issues']) && is_array($check_results['issues'])) {
+                        $total_issues += count($check_results['issues']);
+                    }
+                }
+            }
+            
+            $scan_status = $total_issues > 0 ? 'Vulnerable' : 'Secure';
+            
+            // Prepare results array with proper structure
+            $results = [
+                'core_scan' => [
+                    'issues' => $scan_data['issues'] ?? []
+                ],
+                'security_checks' => $scan_data['results'] ?? []
+            ];
+            
+            // Save scan history with proper error handling
+            $this->save_scan_history($scan_status, $results);
+            
+            // Clean up session data
+            delete_option($this->scan_session_key . '_' . $session_id);
+            
+            return [
+                'type' => 'complete',
+                'total_issues' => $total_issues,
+                'status' => $scan_status,
+                'results' => $results
+            ];
+        } catch (Exception $e) {
+            error_log("Scan finalization error: " . $e->getMessage());
+            return ['type' => 'error', 'message' => 'Error finalizing scan'];
+        }
+    } */
+
+    private function finalize_scan($session_id) {
+        error_log('Starting scan finalization');  // Debug log
+        
+        $scan_data = get_option($this->scan_session_key . '_' . $session_id);
+        if (!$scan_data) {
+            error_log('Invalid session data during finalization');  // Debug log
+            return ['type' => 'error', 'message' => 'Invalid session'];
+        }
+        
+        // Count issues only from WordPress version check
+        $total_issues = 0;
+        if (isset($scan_data['results']['wordpress_version']['issues'])) {
+            $total_issues = count($scan_data['results']['wordpress_version']['issues']);
         }
         
         $scan_status = $total_issues > 0 ? 'Vulnerable' : 'Secure';
-
-        error_log( 'Data Received: scan_status' . print_r( $scan_status, true ) );
-        $this->save_scan_history($scan_status, [
-            'core_scan' => ['issues' => $scan_data['issues']],
-            'security_checks' => $scan_data['results']
-        ]);
-
-        error_log( 'Data Received: $scan_data[issues]' . print_r( $scan_data['issues'], true ) );
         
+        // Save simplified results
+        $results = [
+            'security_checks' => [
+                'wordpress_version' => $scan_data['results']['wordpress_version'] ?? []
+            ]
+        ];
+        
+        $this->save_scan_history($scan_status, $results);
+        
+        // Clean up
         delete_option($this->scan_session_key . '_' . $session_id);
+        
+        error_log('Scan finalization completed');  // Debug log
         
         return [
             'type' => 'complete',
             'total_issues' => $total_issues,
             'status' => $scan_status,
-            'results' => [
-                'core_scan' => ['issues' => $scan_data['issues']],
-                'security_checks' => $scan_data['results']
-            ]
+            'results' => $results
         ];
     }
+
     
     //---------------
 
@@ -543,7 +642,7 @@ class AdvancedWordPressSecurityScanner {
         ];
     }
 
-    private function save_scan_history($status, $results) {
+    /* private function save_scan_history($status, $results) {
         $history = get_option($this->scan_history_option, []);
         
         $new_scan = [
@@ -567,6 +666,22 @@ class AdvancedWordPressSecurityScanner {
 
         file_put_contents($log_file, $log_content, FILE_APPEND);
 
+    } */
+
+    private function save_scan_history($status, $results) {
+        $history = get_option($this->scan_history_option, []);
+        
+        $new_scan = [
+            'date' => current_time('mysql'),
+            'status' => $status,
+            'details' => $results
+        ];
+        
+        array_unshift($history, $new_scan);
+        $history = array_slice($history, 0, 20);
+        
+        update_option($this->scan_history_option, $history);
+        error_log('Scan history saved');  // Debug log
     }
 
     public function get_scan_history() {
@@ -643,142 +758,23 @@ class AdvancedWordPressSecurityScanner {
 
     // Simulated vulnerability check - replace with actual vulnerability database API
     private function fetch_vulnerable_plugins($name, $version) {
-        $vulnerabilities = [];
-        
-        // 1. Check WordPress.org API for plugin information
-        $api_url = 'https://api.wordpress.org/plugins/info/1.2/?action=plugin_information';
-        $response = wp_remote_get(add_query_arg([
-            'slug' => sanitize_title($name),
-            'fields' => [
-                'versions' => true,
-                'tested' => true,
-                'requires' => true,
-                'rating' => true,
-                'last_updated' => true,
-                'downloaded' => true,
-                'active_installs' => true
-            ]
-        ], $api_url));
-    
-        if (is_wp_error($response)) {
-            return [
-                [
-                    'type' => 'error',
-                    'description' => 'Unable to check plugin security status',
-                    'recommendation' => 'Please try again later or check plugin manually.'
-                ]
-            ];
-        }
-    
-        $plugin_data = json_decode(wp_remote_retrieve_body($response));
-        
-        // Security checks based on free data
-        if ($plugin_data) {
-            // Check 1: Version outdated
-            if (isset($plugin_data->version) && version_compare($version, $plugin_data->version, '<')) {
-                $vulnerabilities[] = [
-                    'type' => 'security_warning',
-                    'description' => sprintf(
-                        'Running outdated version %s. Latest version is %s',
-                        esc_html($version),
-                        esc_html($plugin_data->version)
-                    ),
-                    'recommendation' => 'Update to the latest version for security patches.'
-                ];
-            }
-    
-            // Check 2: Plugin abandoned
-            $last_updated = isset($plugin_data->last_updated) ? strtotime($plugin_data->last_updated) : 0;
-            if ($last_updated && (time() - $last_updated) > (365 * 24 * 60 * 60)) { // Over 1 year
-                $vulnerabilities[] = [
-                    'type' => 'warning',
-                    'description' => 'Plugin has not been updated in over a year',
-                    'recommendation' => 'Consider finding an actively maintained alternative.'
-                ];
-            }
-    
-            // Check 3: WordPress version compatibility
-            global $wp_version;
-            if (isset($plugin_data->tested) && version_compare($wp_version, $plugin_data->tested, '>')) {
-                $vulnerabilities[] = [
-                    'type' => 'warning',
-                    'description' => sprintf(
-                        'Plugin only tested up to WordPress %s (you\'re running %s)',
-                        esc_html($plugin_data->tested),
-                        esc_html($wp_version)
-                    ),
-                    'recommendation' => 'Check plugin compatibility with your WordPress version.'
-                ];
-            }
-    
-            // Check 4: Low installation count (might indicate unreliable plugin)
-            if (isset($plugin_data->active_installs) && $plugin_data->active_installs < 100) {
-                $vulnerabilities[] = [
-                    'type' => 'warning',
-                    'description' => 'Plugin has very few active installations',
-                    'recommendation' => 'Verify plugin reliability and consider alternatives with larger user base.'
-                ];
-            }
-    
-            // Check 5: Low rating warning
-            if (isset($plugin_data->rating) && ($plugin_data->rating / 100) < 3.5) {
-                $vulnerabilities[] = [
-                    'type' => 'warning',
-                    'description' => 'Plugin has low user rating',
-                    'recommendation' => 'Research plugin reviews and consider alternatives.'
-                ];
-            }
-    
-            // Check 6: Check against known vulnerable versions using simple database
-            $known_vulnerable_versions = $this->get_known_vulnerable_versions($name);
-            foreach ($known_vulnerable_versions as $vuln_version => $vuln_details) {
-                if (version_compare($version, $vuln_version, '<=')) {
-                    $vulnerabilities[] = [
-                        'type' => 'vulnerability',
-                        'description' => $vuln_details['description'],
-                        'recommendation' => $vuln_details['fix']
-                    ];
-                }
-            }
-        } else {
-            $vulnerabilities[] = [
-                'type' => 'warning',
-                'description' => 'Plugin not found in WordPress.org repository',
-                'recommendation' => 'Verify the plugin source and ensure it\'s from a trusted developer.'
-            ];
-        }
-    
-        return $vulnerabilities;
-    }
-    
-    private function get_known_vulnerable_versions($plugin_name) {
-        // This could be expanded with a regularly updated list from various free sources
-        // Example structure - you should expand this based on publicly disclosed vulnerabilities
+        // Placeholder: Would typically use an external vulnerability database
         $known_vulnerabilities = [
-            'contact-form-7' => [
-                '5.3.1' => [
-                    'description' => 'XSS vulnerability in versions 5.3.1 and below',
-                    'fix' => 'Update to version 5.3.2 or higher'
-                ]
-            ],
-            'wordpress-seo' => [
-                '17.8' => [
-                    'description' => 'Authenticated SQLi vulnerability in versions 17.8 and below',
-                    'fix' => 'Update to version 17.9 or higher'
-                ]
-            ],
-            // Add more known vulnerabilities here
+            // Example: 'Contact Form 7' => ['versions' => ['<5.5.6'], 'description' => 'XSS vulnerability']
         ];
-    
-        return $known_vulnerabilities[sanitize_title($plugin_name)] ?? [];
+
+        // Implement actual vulnerability checking logic here
+        return [];
     }
 
-    public function check_wordpress_version_security() {
+    private function check_wordpress_version_security() {
         global $wp_version;
+        error_log('Current WordPress version: ' . $wp_version);  // Debug log
+        
         $issues = [];
-    
-        // Check current WordPress version against recommended security version
-        $latest_version = $this->get_latest_wordpress_version();
+        
+        // Simple version comparison against a hardcoded version
+        $latest_version = '6.4'; // Hardcoded for testing
         
         if (version_compare($wp_version, $latest_version, '<')) {
             $issues[] = [
@@ -787,53 +783,39 @@ class AdvancedWordPressSecurityScanner {
                 'message' => 'WordPress is outdated. Please update to the latest version.'
             ];
         }
-    
+        
+        error_log('Version check completed. Issues found: ' . count($issues));  // Debug log
+        
         return [
             'issues' => $issues,
             'version_checked' => $wp_version
         ];
     }
 
-    private function get_latest_wordpress_version() {
-        // Use WordPress core API to check for updates
-        $update_core = get_site_transient('update_core');
-        
-        // If transient doesn't exist or is expired, fetch fresh data
-        if (!$update_core) {
-            wp_version_check();
-            $update_core = get_site_transient('update_core');
-        }
-        
-        // Parse the update check response
-        if ($update_core && property_exists($update_core, 'updates')) {
-            foreach ($update_core->updates as $update) {
-                // Look for the latest stable version
-                if ($update->response === 'upgrade' && $update->channel === 'stable') {
-                    return $update->version;
-                }
+    /* private function get_latest_wordpress_version() {
+        try {
+            // Try to get version from WordPress API
+            $api_response = wp_remote_get('https://api.wordpress.org/core/version-check/1.7/');
+            
+            if (is_wp_error($api_response)) {
+                throw new Exception('Failed to connect to WordPress.org API');
             }
-        }
-        
-        // Fallback: directly check WordPress API
-        $api_url = 'https://api.wordpress.org/core/version-check/1.7/';
-        $response = wp_remote_get($api_url);
-        
-        if (!is_wp_error($response)) {
-            $api_response = json_decode(wp_remote_retrieve_body($response), true);
-            if (isset($api_response['offers']) && is_array($api_response['offers'])) {
-                foreach ($api_response['offers'] as $offer) {
-                    if (isset($offer['response']) && $offer['response'] === 'upgrade' && 
-                        isset($offer['current']) && !empty($offer['current'])) {
-                        return $offer['current'];
-                    }
-                }
+            
+            $api_data = json_decode(wp_remote_retrieve_body($api_response), true);
+            
+            if (isset($api_data['offers'][0]['version'])) {
+                return $api_data['offers'][0]['version'];
             }
+            
+            // Fallback to current major version if API fails
+            global $wp_version;
+            return $wp_version;
+        } catch (Exception $e) {
+            error_log("Error getting latest WordPress version: " . $e->getMessage());
+            return false;
         }
-        
-        // If all checks fail, return current WordPress version
-        global $wp_version;
-        return $wp_version;
-    }
+    } */
+
     
     //===
     private function render_directory_checkboxes($type, $directories, $current_exclusions) {

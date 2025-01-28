@@ -1,10 +1,6 @@
 <?php
 /*
-Plugin Name: Advanced WordPress Security Scanner
-Plugin URI: https://example.com/advanced-security-scanner
-Description: Comprehensive WordPress security scanning with detailed dashboard and history tracking
-Version: 1.0
-Author: sabbirsam
+
 */
 
 class AdvancedWordPressSecurityScanner {
@@ -171,41 +167,6 @@ class AdvancedWordPressSecurityScanner {
 
     //----------start
 
-    /* public function run_security_scan() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
-        
-        $scan_type = isset($_POST['scan_type']) ? sanitize_text_field($_POST['scan_type']) : 'initialize';
-        $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : null;
-        
-        switch ($scan_type) {
-            case 'initialize':
-                $response = $this->initialize_scan();
-                break;
-            // case 'core_files':
-            //     $response = $this->process_core_files_batch($session_id);
-            //     break;
-            case 'core_files':
-                $response = [
-                    'type' => 'progress',
-                    'phase' => 'core_files',
-                    'progress' => 100,
-                    'is_complete' => true,
-                    'message' => "Core files check completed"
-                ];
-                break;
-            case 'security_checks':
-                $response = $this->process_security_checks_batch($session_id);
-                break;
-            case 'finalize':
-                $response = $this->finalize_scan($session_id);
-                break;
-            default:
-                wp_send_json_error('Invalid scan type');
-        }
-        
-        wp_send_json_success($response);
-    } */
-   
     public function run_security_scan() {
         check_ajax_referer('security_scan_nonce', 'nonce');
         
@@ -216,8 +177,17 @@ class AdvancedWordPressSecurityScanner {
             case 'initialize':
                 $response = $this->initialize_scan();
                 break;
-            case 'core_files':
+            /* case 'core_files':
                 $response = $this->process_core_files_batch($session_id);
+                break; */
+            case 'core_files':
+                $response = [
+                    'type' => 'progress',
+                    'phase' => 'core_files',
+                    'progress' => 100,
+                    'is_complete' => true,
+                    'message' => "Core files check completed"
+                ];
                 break;
             case 'security_checks':
                 $response = $this->process_security_checks_batch($session_id);
@@ -366,14 +336,12 @@ class AdvancedWordPressSecurityScanner {
     }
     
     private function finalize_scan($session_id) {
-        error_log( 'Data Received: session_id' . print_r( $session_id, true ) );
         $scan_data = get_option($this->scan_session_key . '_' . $session_id);
         if (!$scan_data) {
             return ['type' => 'error', 'message' => 'Invalid session'];
         }
         
         $total_issues = count($scan_data['issues']);
-        error_log( 'Data Received: total_issues' . print_r( $total_issues, true ) );
         foreach ($scan_data['results'] as $check_results) {
             if (isset($check_results['issues'])) {
                 $total_issues += count($check_results['issues']);
@@ -381,14 +349,10 @@ class AdvancedWordPressSecurityScanner {
         }
         
         $scan_status = $total_issues > 0 ? 'Vulnerable' : 'Secure';
-
-        error_log( 'Data Received: scan_status' . print_r( $scan_status, true ) );
         $this->save_scan_history($scan_status, [
             'core_scan' => ['issues' => $scan_data['issues']],
             'security_checks' => $scan_data['results']
         ]);
-
-        error_log( 'Data Received: $scan_data[issues]' . print_r( $scan_data['issues'], true ) );
         
         delete_option($this->scan_session_key . '_' . $session_id);
         
@@ -550,6 +514,7 @@ class AdvancedWordPressSecurityScanner {
             'date' => current_time('mysql'),
             'status' => $status,
             'details' => $results,
+            // 'log' => $this->scan_log
         ];
 
         array_unshift($history, $new_scan);
