@@ -1090,13 +1090,13 @@ class AdvancedWordPressSecurityScanner {
             }
     
             // Check 5: Low rating warning
-            if (isset($plugin_data->rating) && ($plugin_data->rating / 100) < 3.5) {
+            /* if (isset($plugin_data->rating) && ($plugin_data->rating / 100) < 3.5) {
                 $vulnerabilities[] = [
                     'type' => 'warning',
                     'description' => 'Plugin has low user rating',
                     'recommendation' => 'Research plugin reviews and consider alternatives.'
                 ];
-            }
+            } */
     
             // Check 6: Check against known vulnerable versions using simple database
             $known_vulnerable_versions = $this->get_known_vulnerable_versions($name);
