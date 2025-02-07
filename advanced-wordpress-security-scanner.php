@@ -204,7 +204,7 @@ class AdvancedWordPressSecurityScanner {
                         <h3>Directory Exclusions</h3>
                         
                         <div>
-                            <h4>Core Files</h4>
+                            <h4>Full folder</h4>
                             <?php $this->render_directory_checkboxes('core_files', $this->get_core_file_directories(), $exclusions['core_files']); ?>
                         </div>
 
@@ -328,8 +328,8 @@ class AdvancedWordPressSecurityScanner {
         $current_path = $paths[$scan_data['current_path_index']];
         $exclusions = $this->get_scan_exclusions();
 
-        error_log('Processing path: ' . $current_path);
-        error_log('Exclusions: ' . print_r($exclusions, true));
+        // error_log('Processing path: ' . $current_path);
+        // error_log('Exclusions: ' . print_r($exclusions, true));
 
         // Check if current path type is completely excluded
         if ($this->is_path_type_excluded($current_path, $exclusions)) {
@@ -409,8 +409,8 @@ class AdvancedWordPressSecurityScanner {
         $mapped_path = $path_type;
         
         // Debug log to check values
-        error_log('Checking path type: ' . $path_type);
-        error_log('Current exclusions: ' . print_r($exclusions['core_files'], true));
+        // error_log('Checking path type: ' . $path_type);
+        // error_log('Current exclusions: ' . print_r($exclusions['core_files'], true));
         
         // Convert path_type to the format used in exclusions if needed
         foreach ($this->core_path_mapping as $exclusion_key => $scan_key) {
@@ -420,11 +420,11 @@ class AdvancedWordPressSecurityScanner {
             }
         }
         
-        error_log('Mapped path: ' . $mapped_path);
+        // error_log('Mapped path: ' . $mapped_path);
 
         // Check if the path is excluded
         if (!empty($exclusions['core_files']) && in_array($mapped_path, $exclusions['core_files'])) {
-            error_log('Path is excluded: ' . $mapped_path);
+            // error_log('Path is excluded: ' . $mapped_path);
             return true;
         }
 
@@ -442,14 +442,14 @@ class AdvancedWordPressSecurityScanner {
                 break;
         }
 
-        error_log('Path is not excluded: ' . $mapped_path);
+        // error_log('Path is not excluded: ' . $mapped_path);
         return false;
     }
 
     private function should_exclude_file($file, $current_path, $exclusions) {
 
-        error_log('Checking file exclusion: ' . $file);
-        error_log('Current path: ' . $current_path);
+        // error_log('Checking file exclusion: ' . $file);
+        // error_log('Current path: ' . $current_path);
 
         if (!empty($exclusions['core_files'])) {
             foreach ($exclusions['core_files'] as $excluded_dir) {
@@ -459,7 +459,7 @@ class AdvancedWordPressSecurityScanner {
                 if (isset($this->scan_paths[$mapped_dir])) {
                     $dir_path = $this->scan_paths[$mapped_dir];
                     if (strpos($file, $dir_path) === 0) {
-                        error_log('File excluded due to core directory exclusion: ' . $excluded_dir);
+                        // error_log('File excluded due to core directory exclusion: ' . $excluded_dir);
                         return true;
                     }
                 }
@@ -475,13 +475,13 @@ class AdvancedWordPressSecurityScanner {
                     if ($this->is_regex_pattern($pattern)) {
                         // For regex patterns
                         if (@preg_match($pattern, $file)) {
-                            error_log('File excluded due to regex pattern: ' . $pattern);
+                            // error_log('File excluded due to regex pattern: ' . $pattern);
                             return true;
                         }
                     } else {
                         // For glob patterns
                         if (fnmatch($pattern, $file)) {
-                            error_log('File excluded due to glob pattern: ' . $pattern);
+                            // error_log('File excluded due to glob pattern: ' . $pattern);
                             return true;
                         }
                     }
@@ -504,7 +504,7 @@ class AdvancedWordPressSecurityScanner {
                     $normalized_file = wp_normalize_path($file);
                     
                     if (strpos($normalized_file, $path) === 0) {
-                        error_log('File excluded due to custom path: ' . $path);
+                        // error_log('File excluded due to custom path: ' . $path);
                         return true;
                     }
                 }
@@ -521,7 +521,7 @@ class AdvancedWordPressSecurityScanner {
                     $normalized_file = wp_normalize_path($file);
                     
                     if (strpos($normalized_file, $plugin_path) === 0) {
-                        error_log('File excluded due to plugin exclusion: ' . $plugin);
+                        // error_log('File excluded due to plugin exclusion: ' . $plugin);
                         return true;
                     }
                 }
@@ -538,7 +538,7 @@ class AdvancedWordPressSecurityScanner {
                     $normalized_file = wp_normalize_path($file);
                     
                     if (strpos($normalized_file, $theme_path) === 0) {
-                        error_log('File excluded due to theme exclusion: ' . $theme);
+                        // error_log('File excluded due to theme exclusion: ' . $theme);
                         return true;
                     }
                 }
@@ -551,7 +551,7 @@ class AdvancedWordPressSecurityScanner {
                 foreach ($exclusions['php_functions'] as $function) {
                     $function = trim($function);
                     if (!empty($function) && stripos($content, $function) !== false) {
-                        error_log('File excluded due to containing excluded PHP function: ' . $function);
+                        // error_log('File excluded due to containing excluded PHP function: ' . $function);
                         return true;
                     }
                 }
@@ -608,15 +608,15 @@ class AdvancedWordPressSecurityScanner {
         }
     }
     
-    private function finalize_scan($session_id) {
-        error_log( 'Data Received: session_id' . print_r( $session_id, true ) );
+    /* private function finalize_scan($session_id) {
+        // error_log( 'Data Received: session_id' . print_r( $session_id, true ) );
         $scan_data = get_option($this->scan_session_key . '_' . $session_id);
         if (!$scan_data) {
             return ['type' => 'error', 'message' => 'Invalid session'];
         }
         
         $total_issues = count($scan_data['issues']);
-        error_log( 'Data Received: total_issues' . print_r( $total_issues, true ) );
+        // error_log( 'Data Received: total_issues' . print_r( $total_issues, true ) );
         foreach ($scan_data['results'] as $check_results) {
             if (isset($check_results['issues'])) {
                 $total_issues += count($check_results['issues']);
@@ -625,13 +625,13 @@ class AdvancedWordPressSecurityScanner {
         
         $scan_status = $total_issues > 0 ? 'Vulnerable' : 'Secure';
 
-        error_log( 'Data Received: scan_status' . print_r( $scan_status, true ) );
+        // error_log( 'Data Received: scan_status' . print_r( $scan_status, true ) );
         $this->save_scan_history($scan_status, [
             'core_scan' => ['issues' => $scan_data['issues']],
             'security_checks' => $scan_data['results']
         ]);
 
-        error_log( 'Data Received: $scan_data[issues]' . print_r( $scan_data['issues'], true ) );
+        // error_log( 'Data Received: $scan_data[issues]' . print_r( $scan_data['issues'], true ) );
         
         delete_option($this->scan_session_key . '_' . $session_id);
         
@@ -644,7 +644,106 @@ class AdvancedWordPressSecurityScanner {
                 'security_checks' => $scan_data['results']
             ]
         ];
+    } */
+
+    // New 
+    private function finalize_scan($session_id) {
+        $scan_data = get_option($this->scan_session_key . '_' . $session_id);
+        if (!$scan_data) {
+            return ['type' => 'error', 'message' => 'Invalid session'];
+        }
+        
+        // Initialize counters for different types of issues
+        $issue_summary = [
+            'critical' => 0,
+            'high' => 0,
+            'medium' => 0,
+            'low' => 0,
+            'info' => 0
+        ];
+        
+        // Process core scan issues
+        if (!empty($scan_data['issues'])) {
+            foreach ($scan_data['issues'] as $issue) {
+                // Core file issues are typically high severity
+                $issue_summary['high'] += count($issue['issues']);
+            }
+        }
+        
+        // Process security check results
+        if (!empty($scan_data['results'])) {
+            foreach ($scan_data['results'] as $check_type => $check_results) {
+                if (isset($check_results['issues'])) {
+                    $this->categorize_security_issues($check_results['issues'], $issue_summary);
+                }
+            }
+        }
+        
+        // Calculate total issues
+        $total_issues = array_sum($issue_summary);
+        
+        // Determine overall security status
+        $scan_status = $this->determine_security_status($issue_summary);
+        
+        // Save scan results
+        $scan_results = [
+            'core_scan' => ['issues' => $scan_data['issues']],
+            'security_checks' => $scan_data['results'],
+            'issue_summary' => $issue_summary
+        ];
+        
+        $this->save_scan_history($scan_status, $scan_results);
+        
+        // Cleanup session data
+        delete_option($this->scan_session_key . '_' . $session_id);
+        
+        return [
+            'type' => 'complete',
+            'total_issues' => $total_issues,
+            'issue_summary' => $issue_summary,
+            'status' => $scan_status,
+            'results' => $scan_results
+        ];
     }
+    
+    private function categorize_security_issues($issues, &$issue_summary) {
+        foreach ($issues as $issue) {
+            if (is_array($issue) && isset($issue['type'])) {
+                switch ($issue['type']) {
+                    case 'vulnerability':
+                        $issue_summary['critical']++;
+                        break;
+                    case 'security_warning':
+                        $issue_summary['high']++;
+                        break;
+                    case 'warning':
+                        $issue_summary['medium']++;
+                        break;
+                    default:
+                        $issue_summary['low']++;
+                }
+            } else {
+                // Simple string issues are treated as medium severity
+                $issue_summary['medium']++;
+            }
+        }
+    }
+    
+    private function determine_security_status($issue_summary) {
+        // Site is considered vulnerable only if there are critical or high severity issues
+        if ($issue_summary['critical'] > 0) {
+            return 'Critical';
+        } elseif ($issue_summary['high'] > 0) {
+            return 'Vulnerable';
+        } elseif ($issue_summary['medium'] > 0) {
+            return 'Warning';
+        } elseif ($issue_summary['low'] > 0 || $issue_summary['info'] > 0) {
+            return 'Notice';
+        }
+        
+        return 'Secure';
+    }
+    // End 
     
     private function send_progress_update($check_type, $title, $status, $progress) {
         // Ensure progress doesn't exceed 100
@@ -782,7 +881,7 @@ class AdvancedWordPressSecurityScanner {
         ];
     }
 
-    private function save_scan_history($status, $results) {
+    /* private function save_scan_history($status, $results) {
         $history = get_option($this->scan_history_option, []);
         
         $new_scan = [
@@ -806,7 +905,38 @@ class AdvancedWordPressSecurityScanner {
 
         file_put_contents($log_file, $log_content, FILE_APPEND);
 
+    } */
+
+    private function save_scan_history($status, $results) {
+        $history = get_option($this->scan_history_option, []);
+    
+        // Ensure $history is an array
+        if (!is_array($history)) {
+            $history = []; // Reset to an empty array if it's not already an array
+        }
+    
+        $new_scan = [
+            'date' => current_time('mysql'),
+            'status' => $status,
+            'details' => $results,
+        ];
+    
+        array_unshift($history, $new_scan);
+        $history = array_slice($history, 0, 20);
+    
+        update_option($this->scan_history_option, $history);
+    
+        // Save detailed logs to a file
+        $log_file = WP_CONTENT_DIR . '/security_scan_logs.txt';
+        $log_content = 'Scan Date: ' . $new_scan['date'] . PHP_EOL;
+        $log_content .= 'Scan Status: ' . $status . PHP_EOL;
+        $log_content .= 'Issues: ' . print_r($results, true) . PHP_EOL;
+        $log_content .= '-----------------------------' . PHP_EOL;
+    
+        file_put_contents($log_file, $log_content, FILE_APPEND);
     }
+
+    
 
     public function get_scan_history() {
         $history = get_option($this->scan_history_option, []);

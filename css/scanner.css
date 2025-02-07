@@ -68,6 +68,11 @@ h1 {
     border-radius: 20px;
 }
 
+.progress-text {
+    z-index: 999;
+    text-decoration: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+}
+
 .exclusion-settings {
     display: grid;
     grid-template-columns: 1fr;
@@ -123,11 +128,23 @@ h1 {
     margin-bottom: 15px;
 }
 
-.status-error {
-    color: #ef4444;
+.status-critical {
+    color: #f70000;
 }
 
-.status-success {
+.status-vulnerable {
+    color: #f5542c;
+}
+
+.status-warning {
+    color: #b1610c;
+}
+
+.status-notice {
+    color: #517b20;
+}
+
+.status-secure {
     color: #22c55e;
 }
 

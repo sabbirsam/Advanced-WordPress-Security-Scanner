@@ -287,10 +287,13 @@ jQuery(document).ready(function($) {
                 $historyBody.empty();
 
                 $.each(response.data, function(index, scan) {
-                    var totalIssues = countIssues(scan.details);
+
+                    var totalIssues = countIssues(scan.issue_summary || scan.details.issue_summary);
+                
+                    var statusClass = scan.status.toLowerCase();
                     var row = '<tr data-scan-index="' + index + '">' +
                         '<td>' + scan.date + '</td>' +
-                        '<td class="status-' + (scan.status === 'Secure' ? 'success' : 'error') + '">' + scan.status + '</td>' +
+                        '<td class="status-' + statusClass + '">' + scan.status + '</td>' +
                         '<td>' + totalIssues + '</td>' +
                         '<td><button data-scan-index="' + index + '" class="view-details-btn">View Details</button></td>' +
                         '</tr>';
@@ -327,7 +330,7 @@ jQuery(document).ready(function($) {
         });
     }
 
-    function renderScanDetails(data) {
+    /* function renderScanDetails(data) {
         const container = $('#current-scan-results');
         container.empty(); // Clear previous results
     
@@ -344,7 +347,138 @@ jQuery(document).ready(function($) {
         `;
     
         container.html(detailsHTML);
+    } */
+
+    // New
+    function renderScanDetails(data) {
+        const container = $('#current-scan-results');
+        container.empty();
+        
+        const detailsHTML = `
+            <div class="scan-result">
+                <h3>Scan Date: ${data.date}</h3>
+                <p class="status-${data.status.toLowerCase()}"><strong>Status:</strong> ${data.status}</p>
+                <div class="scan-details">
+                    ${renderSecuritySection(data.details)}
+                </div>
+            </div>
+        `;
+    
+        container.html(detailsHTML);
     }
+    
+    function renderSecuritySection(details) {
+        if (!details) return '<p>No scan details available.</p>';
+        
+        let sectionsHTML = '';
+        
+        // Core Scan Section
+        if (details.core_scan) {
+            sectionsHTML += `
+                <div class="section core-scan">
+                    <h4>Core Files Scan</h4>
+                    ${details.core_scan.issues && details.core_scan.issues.length > 0 
+                        ? renderIssuesList(details.core_scan.issues)
+                        : '<p class="no-issues">No core file issues found.</p>'
+                    }
+                </div>
+            `;
+        }
+        
+        // Security Checks Section
+        if (details.security_checks) {
+            sectionsHTML += '<div class="section security-checks"><h4>Security Checks</h4>';
+            
+            // WordPress Version Check
+            if (details.security_checks.wordpress_version) {
+                const wpVersion = details.security_checks.wordpress_version;
+                sectionsHTML += `
+                    <div class="subsection wordpress-version">
+                        <h5>WordPress Version</h5>
+                        <p>Current Version: ${wpVersion.version_checked}</p>
+                        ${wpVersion.issues && wpVersion.issues.length > 0 
+                            ? renderIssuesList(wpVersion.issues)
+                            : '<p class="no-issues">WordPress version is up to date.</p>'
+                        }
+                    </div>
+                `;
+            }
+            
+            // Plugin Vulnerabilities
+            if (details.security_checks.plugin_vulnerabilities) {
+                const pluginCheck = details.security_checks.plugin_vulnerabilities;
+                sectionsHTML += `
+                    <div class="subsection plugin-vulnerabilities">
+                        <h5>Plugin Vulnerabilities</h5>
+                        <p>Files Checked: ${pluginCheck.files_checked}</p>
+                        ${renderPluginIssues(pluginCheck.issues)}
+                    </div>
+                `;
+            }
+            
+            sectionsHTML += '</div>';
+        }
+        
+        return sectionsHTML;
+    }
+    
+    function renderPluginIssues(issues) {
+        if (!issues || issues.length === 0) {
+            return '<p class="no-issues">No plugin vulnerabilities found.</p>';
+        }
+        
+        let html = '<div class="plugin-issues">';
+        
+        issues.forEach(plugin => {
+            html += `
+                <div class="plugin-issue">
+                    <h6>${escapeHtml(plugin.plugin)} (v${escapeHtml(plugin.version)})</h6>
+                    <ul class="vulnerability-list">
+                        ${plugin.vulnerabilities.map(vuln => `
+                            <li class="vulnerability-item ${vuln.type}">
+                                <span class="vuln-type">${formatVulnType(vuln.type)}</span>
+                                <p class="vuln-description">${escapeHtml(vuln.description)}</p>
+                                ${vuln.recommendation ? `
+                                    <p class="vuln-recommendation"><strong>Recommendation:</strong> ${escapeHtml(vuln.recommendation)}</p>
+                                ` : ''}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+    
+    function formatVulnType(type) {
+        return type
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+    
+    function renderIssuesList(issues) {
+        if (!issues || issues.length === 0) {
+            return '<p class="no-issues">No issues found.</p>';
+        }
+        
+        return `
+            <ul class="issues-list">
+                ${issues.map(issue => `
+                    <li class="issue-item">
+                        ${issue.file ? `<strong>File:</strong> ${escapeHtml(issue.file)}<br>` : ''}
+                        ${Array.isArray(issue.issues) 
+                            ? issue.issues.map(subIssue => `<p>${escapeHtml(subIssue)}</p>`).join('')
+                            : `<p>${escapeHtml(issue)}</p>`
+                        }
+                    </li>
+                `).join('')}
+            </ul>
+        `;
+    } 
+    // End 
     
     function renderCoreDetails(core) {
         if (!core) return '<p>No core details available.</p>';
@@ -371,15 +505,31 @@ jQuery(document).ready(function($) {
         `;
     }
     
-    function countIssues(details) {
+    function countIssues(issueSummary) {
         var totalIssues = 0;
-        $.each(details, function(category, result) {
-            if (result.issues) {
-                totalIssues += result.issues.length;
+    
+        // Ensure issueSummary is a valid object
+        if (typeof issueSummary === "string") {
+            try {
+                issueSummary = JSON.parse(issueSummary); // Decode if it's a JSON string
+            } catch (e) {
+                console.error("Error parsing issueSummary:", e);
+                return 0;
             }
-        });
+        }
+    
+        if (typeof issueSummary === "object" && issueSummary !== null) {
+            $.each(issueSummary, function(category, count) {
+                totalIssues += parseInt(count, 10) || 0; // Ensure count is a number
+            });
+        } else {
+            console.error("Invalid issueSummary format:", issueSummary);
+        }
+    
         return totalIssues;
     }
+
+        
 
     function formatCategoryName(category) {
         return category
