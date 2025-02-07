@@ -62,15 +62,88 @@ class AdvancedWordPressSecurityScanner {
 
     private $security_patterns = [
         'dangerous_functions' => [
-            'base64_decode', 'eval(', 'system(', 'exec(', 
-            'shell_exec(', 'passthru(', 'proc_open(', 'popen('
+            // Command execution
+            'eval(', 'system(', 'exec(', 'shell_exec(', 'passthru(', 
+            'proc_open(', 'popen(', 'pcntl_exec(',
+            'assert(', 'create_function(',
+            
+            // Process manipulation
+            'proc_nice(', 'proc_terminate(', 'proc_close(', 
+            'proc_get_status(', 'proc_open(', 'putenv(',
+            
+            // Potentially dangerous PHP functions
+            'extract(', 'parse_str(', 'putenv(', 'ini_set(',
+            'ini_alter(', 'ini_restore(', 'dl(', 'error_reporting(',
+            'apache_setenv(',
+            
+            // File operations that could be malicious
+            'tmpfile(', 'bzopen(', 'gzopen(', 
+            'chgrp(', 'chmod(', 'chown(', 'copy(',
+            'lchgrp(', 'lchown(', 'link(', 'mkdir(', 'move_uploaded_file(', 
+            'rename(', 'rmdir(', 'symlink(', 'tempnam(', 'touch(',
+            'unlink(', 'imagepng(', 'imagewbmp(', 'image2wbmp(',
+            'imagejpeg(', 'imagexbm(', 'imagegif(', 'imagegd(',
+            'imagegd2(', 'iptcembed(', 'ftp_get(', 'ftp_nb_get(',
+            'file_exists(', 'max_execution_time', 'error_log('
         ],
+        
         'obfuscation_indicators' => [
-            'gzinflate', 'str_rot13', 'chr(', 'base64_encode'
+            // String manipulation and encoding
+            'base64_decode', 'base64_encode', 'gzinflate', 'gzdeflate',
+            'gzencode', 'gzdecode', 'str_rot13', 'chr(', 'chrfirst(',
+            'bin2hex', 'hex2bin', 'convert_uudecode', 'htmlspecialchars_decode',
+            'rawurldecode', 'stripslashes', 'iconv(', 'sizeof(',
+            'str_replace(', 'strtr(', 'preg_replace(', 'rawurldecode(',
+            'urldecode(', 'htmlspecialchars_decode(', 'htmlentities(',
+            'fromCharCode', 'substr(', 'strrev(', 'chunk_split(',
+            'pack(', 'unescape(', 'unicode', '\\x[0-9a-f]{2}',
+            '\\u[0-9a-f]{4}', '\\[0-7]{3}',
+            
+            // JavaScript obfuscation patterns
+            'eval\s*\(', 'unescape\s*\(', 'String\.fromCharCode',
+            'parseInt\s*\(.+?,\s*16\)', 'Array\s*\(\d+\)\s*\.join\s*\(\s*[\'"`]\s*[\'"`]\s*\)',
+            
+            // Common obfuscated file extensions
+            '\.ph.*p.*$', '\.asp.*x.*$', '\.jspx*$',
+            
+            // Encoded strings patterns
+            'JHshZWxs', 'base64_decode', 'eval\s*\(.*\)',
         ],
+        
         'malware_signatures' => [
-            'wp_redirect', 'file_get_contents', 'curl_exec', 
-            'include_once', 'require_once'
+            // Malicious behavior patterns
+            'fsockopen(', 'pfsockopen(', 'stream_socket_client(',
+            'socket_create(', 'stream_socket_pair(', 'stream_socket_server(',
+            'xmlrpc_decode(', 'call_user_func(', 'call_user_func_array(',
+            'create_function(', 'ReflectionFunction(', 'mysql_connect(',
+            'mysql_pconnect(', 'mysqli_connect(', 'mysqli_real_connect(',
+            'pg_connect(', 'pg_pconnect(', 'sqlite_open(', 'sqlite_popen(',
+            'PDO(', 'curl_exec(', 'curl_multi_exec(',
+            
+            // Common malware function names
+            'fx29sh', 'c99sh', 'r57sh', 'shellbot', 'phpshell', 'void\.ru',
+            'phpremoteview', 'directmail', 'bash_history', 'multiviews',
+            'cwings', 'vandal', 'bitchx', 'eggdrop', 'guardservices',
+            'psybnc', 'zombies', 'fulldisclosure', 'php\-security',
+            'milw0rm', 'metasploit', 'slowloris', 'shell_exec',
+            
+            // Malicious content indicators
+            'eval\s*\(.*base64_decode\s*\(', 
+            'eval\s*\(.*gzinflate\s*\(',
+            'eval\s*\(.*str_rot13\s*\(',
+            'eval\s*\(.*gzuncompress\s*\(',
+            'eval\s*\(.*strrev\s*\(',
+            'eval\s*\(.*gzdecode\s*\(',
+            'eval\s*\(.*convert_uudecode\s*\(',
+            'eval\s*\(.*unserialize\s*\(',
+            '\$GLOBALS\[\$GLOBALS',
+            'preg_replace\s*\([\'"]/.*/e[\'"]',
+            '(?:\\\\x[0-9a-f]{2}){4,}',
+            
+            // Cryptocurrency mining indicators
+            'coinhive', 'cryptonight', 'webassembly', 'wasmjit',
+            'cryptoloot', 'deepminer', 'coin-hive', 'jsecoin',
+            'minero', 'coinimp', 'webmine', 'monerominer'
         ]
     ];
 
@@ -527,7 +600,7 @@ class AdvancedWordPressSecurityScanner {
     private function process_security_check($check_type) {
         switch ($check_type) {
             case 'plugin_vulnerabilities':
-                return $this->check_plugin_vulnerabilities();
+                return $this->check_plugin_vulnerabilities(); // Will update with my notifier plugin code feature check 
             case 'wordpress_version':
                 return $this->check_wordpress_version_security();
             default:
@@ -683,8 +756,7 @@ class AdvancedWordPressSecurityScanner {
     private function check_database_security() {
         global $wpdb;
         $issues = [];
-
-        // Check for default table prefix
+        // Check for default table prefix.
         if ($wpdb->prefix === 'wp_') {
             $issues[] = 'Using default database prefix increases vulnerability';
         }
@@ -694,7 +766,6 @@ class AdvancedWordPressSecurityScanner {
 
     private function check_wordpress_configuration() {
         $issues = [];
-
         // Check debug mode
         if (defined('WP_DEBUG') && WP_DEBUG === true) {
             $issues[] = 'Debug mode is enabled - should be disabled in production';
