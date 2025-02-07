@@ -204,7 +204,7 @@ class AdvancedWordPressSecurityScanner {
                         <h3>Directory Exclusions</h3>
                         
                         <div>
-                            <h4>Full folder</h4>
+                            <h4>Directories</h4>
                             <?php $this->render_directory_checkboxes('core_files', $this->get_core_file_directories(), $exclusions['core_files']); ?>
                         </div>
 
@@ -407,11 +407,7 @@ class AdvancedWordPressSecurityScanner {
     private function is_path_type_excluded($path_type, $exclusions) {
         // First, map the path type to its correct exclusion identifier
         $mapped_path = $path_type;
-        
-        // Debug log to check values
-        // error_log('Checking path type: ' . $path_type);
-        // error_log('Current exclusions: ' . print_r($exclusions['core_files'], true));
-        
+
         // Convert path_type to the format used in exclusions if needed
         foreach ($this->core_path_mapping as $exclusion_key => $scan_key) {
             if ($path_type === $scan_key) {
@@ -447,9 +443,6 @@ class AdvancedWordPressSecurityScanner {
     }
 
     private function should_exclude_file($file, $current_path, $exclusions) {
-
-        // error_log('Checking file exclusion: ' . $file);
-        // error_log('Current path: ' . $current_path);
 
         if (!empty($exclusions['core_files'])) {
             foreach ($exclusions['core_files'] as $excluded_dir) {
@@ -608,45 +601,7 @@ class AdvancedWordPressSecurityScanner {
         }
     }
     
-    /* private function finalize_scan($session_id) {
-        // error_log( 'Data Received: session_id' . print_r( $session_id, true ) );
-        $scan_data = get_option($this->scan_session_key . '_' . $session_id);
-        if (!$scan_data) {
-            return ['type' => 'error', 'message' => 'Invalid session'];
-        }
-        
-        $total_issues = count($scan_data['issues']);
-        // error_log( 'Data Received: total_issues' . print_r( $total_issues, true ) );
-        foreach ($scan_data['results'] as $check_results) {
-            if (isset($check_results['issues'])) {
-                $total_issues += count($check_results['issues']);
-            }
-        }
-        
-        $scan_status = $total_issues > 0 ? 'Vulnerable' : 'Secure';
-
-        // error_log( 'Data Received: scan_status' . print_r( $scan_status, true ) );
-        $this->save_scan_history($scan_status, [
-            'core_scan' => ['issues' => $scan_data['issues']],
-            'security_checks' => $scan_data['results']
-        ]);
-
-        // error_log( 'Data Received: $scan_data[issues]' . print_r( $scan_data['issues'], true ) );
-        
-        delete_option($this->scan_session_key . '_' . $session_id);
-        
-        return [
-            'type' => 'complete',
-            'total_issues' => $total_issues,
-            'status' => $scan_status,
-            'results' => [
-                'core_scan' => ['issues' => $scan_data['issues']],
-                'security_checks' => $scan_data['results']
-            ]
-        ];
-    } */
-
-    // New 
+    
     private function finalize_scan($session_id) {
         $scan_data = get_option($this->scan_session_key . '_' . $session_id);
         if (!$scan_data) {
@@ -743,8 +698,7 @@ class AdvancedWordPressSecurityScanner {
         
         return 'Secure';
     }
-    // End 
-    
+
     private function send_progress_update($check_type, $title, $status, $progress) {
         // Ensure progress doesn't exceed 100
         $progress = min(100, max(0, $progress));
@@ -1028,8 +982,12 @@ class AdvancedWordPressSecurityScanner {
                 'active_installs' => true
             ]
         ], $api_url));
-    
+
         if (is_wp_error($response)) {
+            // Skip security check for premium plugins.
+            if ($this->is_premium_plugin($name)) {
+                return [];
+            }
             return [
                 [
                     'type' => 'error',
@@ -1088,17 +1046,20 @@ class AdvancedWordPressSecurityScanner {
                     'recommendation' => 'Verify plugin reliability and consider alternatives with larger user base.'
                 ];
             }
+
+            // Analyze ratings more thoroughly
+            if (isset($plugin_data->ratings) && isset($plugin_data->num_ratings)) {
+                $rating_analysis = $this->analyze_plugin_ratings($plugin_data->ratings, $plugin_data->num_ratings);
+                if ($rating_analysis['flag']) {
+                    $vulnerabilities[] = [
+                        'type' => 'warning',
+                        'description' => $rating_analysis['message'],
+                        'recommendation' => 'Review plugin ratings and feedback carefully.'
+                    ];
+                }
+            }
     
-            // Check 5: Low rating warning
-            /* if (isset($plugin_data->rating) && ($plugin_data->rating / 100) < 3.5) {
-                $vulnerabilities[] = [
-                    'type' => 'warning',
-                    'description' => 'Plugin has low user rating',
-                    'recommendation' => 'Research plugin reviews and consider alternatives.'
-                ];
-            } */
-    
-            // Check 6: Check against known vulnerable versions using simple database
+            // Check 5: Check against known vulnerable versions using simple database
             $known_vulnerable_versions = $this->get_known_vulnerable_versions($name);
             foreach ($known_vulnerable_versions as $vuln_version => $vuln_details) {
                 if (version_compare($version, $vuln_version, '<=')) {
@@ -1200,6 +1161,57 @@ class AdvancedWordPressSecurityScanner {
         // If all checks fail, return current WordPress version
         global $wp_version;
         return $wp_version;
+    }
+
+    private function is_premium_plugin($name) {
+        $premium_patterns = [
+            '/pro$/i',
+            '/premium$/i',
+            '/-pro-/i',
+            '/-premium-/i'
+        ];
+        
+        foreach ($premium_patterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    private function analyze_plugin_ratings($ratings, $total_ratings) {
+        if ($total_ratings < 10) {
+            return [
+                'flag' => true,
+                'message' => 'Plugin has very few ratings to establish reliability'
+            ];
+        }
+    
+        // Convert stdClass to array and handle potential missing keys
+        $ratings_array = (array)$ratings;
+        $five_star = isset($ratings_array[5]) ? $ratings_array[5] : 0;
+        $one_star = isset($ratings_array[1]) ? $ratings_array[1] : 0;
+    
+        // Calculate percentages
+        $five_star_percent = ($five_star / $total_ratings) * 100;
+        $one_star_percent = ($one_star / $total_ratings) * 100;
+    
+        if ($five_star_percent > 90 && $total_ratings < 50) {
+            return [
+                'flag' => true,
+                'message' => 'Unusually high proportion of 5-star ratings with limited total ratings'
+            ];
+        }
+    
+        if ($one_star_percent > 30) {
+            return [
+                'flag' => true,
+                'message' => 'High proportion of 1-star ratings indicates potential issues'
+            ];
+        }
+    
+        return ['flag' => false];
     }
     
     //===
