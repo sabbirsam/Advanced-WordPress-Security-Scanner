@@ -333,7 +333,7 @@ class AdvancedWordPressSecurityScanner {
 
         // Check if current path type is completely excluded
         if ($this->is_path_type_excluded($current_path, $exclusions)) {
-            error_log('Path excluded, skipping: ' . $current_path);
+            // error_log('Path excluded, skipping: ' . $current_path);
             // Skip this path entirely
             $scan_data['completed_paths'][] = $current_path;
             $scan_data['current_path_index']++;
@@ -835,32 +835,7 @@ class AdvancedWordPressSecurityScanner {
         ];
     }
 
-    /* private function save_scan_history($status, $results) {
-        $history = get_option($this->scan_history_option, []);
-        
-        $new_scan = [
-            'date' => current_time('mysql'),
-            'status' => $status,
-            'details' => $results,
-        ];
-
-        array_unshift($history, $new_scan);
-        $history = array_slice($history, 0, 20);
-        
-        update_option($this->scan_history_option, $history);
-
-
-        // Save detailed logs to a file
-        $log_file = WP_CONTENT_DIR . '/security_scan_logs.txt';
-        $log_content = 'Scan Date: ' . $new_scan['date'] . PHP_EOL;
-        $log_content .= 'Scan Status: ' . $status . PHP_EOL;
-        $log_content .= 'Issues: ' . print_r($results, true) . PHP_EOL;
-        $log_content .= '-----------------------------' . PHP_EOL;
-
-        file_put_contents($log_file, $log_content, FILE_APPEND);
-
-    } */
-
+    
     private function save_scan_history($status, $results) {
         $history = get_option($this->scan_history_option, []);
     
@@ -936,29 +911,33 @@ class AdvancedWordPressSecurityScanner {
     public function check_plugin_vulnerabilities() {
         $issues = [];
         $exclusions = $this->get_scan_exclusions();
-
-        // Get all installed plugins
         $plugins = get_plugins();
+        $scan_results = [];
+    
+        foreach ($plugins as $plugin_file => $plugin_data) {
+            $plugin_slug = $this->get_plugin_slug($plugin_file);
         
-        foreach ($plugins as $plugin_path => $plugin_data) {
-            // Check if this plugin is in exclusion list
-            if (in_array($plugin_path, $exclusions['plugin_versions'] ?? [])) {
+            // Skip excluded plugins
+            if (in_array($plugin_slug, $exclusions['plugins'] ?? [])) {
                 continue;
             }
-
-            // Check plugin version against known vulnerabilities
-            $vulnerable_plugins = $this->fetch_vulnerable_plugins($plugin_data['Name'], $plugin_data['Version']);
-            if (!empty($vulnerable_plugins)) {
-                $issues[] = [
+        
+            // Fetch vulnerabilities using the correct slug
+            $plugin_vulnerabilities = $this->fetch_vulnerable_plugins($plugin_slug, $plugin_data['Version']);
+        
+            if (!empty($plugin_vulnerabilities)) {
+                $scan_results[] = [
                     'plugin' => $plugin_data['Name'],
+                    'slug'   => $plugin_slug,
                     'version' => $plugin_data['Version'],
-                    'vulnerabilities' => $vulnerable_plugins
+                    'vulnerabilities' => $plugin_vulnerabilities
                 ];
             }
-        }
 
+        }
+    
         return [
-            'issues' => $issues,
+            'issues' => $scan_results,
             'files_checked' => count($plugins)
         ];
     }
@@ -967,11 +946,20 @@ class AdvancedWordPressSecurityScanner {
     // Simulated vulnerability check - replace with actual vulnerability database API
     private function fetch_vulnerable_plugins($name, $version) {
         $vulnerabilities = [];
+
+        // error_log( 'Data Received:plugin_slug ' . print_r( $name, true ) );
+
+        // If the plugin is premium, skip the security check
+        if ($this->is_premium_plugin($name)) {
+            return [];
+        }
+
+        $plugin_slug = sanitize_title($name);
         
         // 1. Check WordPress.org API for plugin information
         $api_url = 'https://api.wordpress.org/plugins/info/1.2/?action=plugin_information';
         $response = wp_remote_get(add_query_arg([
-            'slug' => sanitize_title($name),
+            'slug' => $plugin_slug,
             'fields' => [
                 'versions' => true,
                 'tested' => true,
@@ -984,10 +972,6 @@ class AdvancedWordPressSecurityScanner {
         ], $api_url));
 
         if (is_wp_error($response)) {
-            // Skip security check for premium plugins.
-            if ($this->is_premium_plugin($name)) {
-                return [];
-            }
             return [
                 [
                     'type' => 'error',
@@ -1080,6 +1064,50 @@ class AdvancedWordPressSecurityScanner {
     
         return $vulnerabilities;
     }
+
+    private function get_plugin_slug($plugin_file) {
+        $plugin_path = WP_PLUGIN_DIR . '/' . $plugin_file;
+    
+        // Ensure the file exists before attempting to read
+        if (!file_exists($plugin_path)) {
+            return false;
+        }
+    
+        // Read plugin metadata
+        $plugin_data = get_file_data($plugin_path, [
+            'TextDomain' => 'Text Domain',
+            'Name'       => 'Plugin Name',
+            'PluginURI'  => 'Plugin URI'
+        ]);
+    
+        // Log raw extracted data for debugging
+        // error_log("Extracted Data: " . print_r($plugin_data, true));
+    
+        // 1. Use Text Domain first if available
+        if (!empty($plugin_data['TextDomain'])) {
+            return sanitize_title($plugin_data['TextDomain']);
+        }
+    
+        // 2. Extract from Plugin URI if it's a WordPress.org plugin
+        if (!empty($plugin_data['PluginURI'])) {
+            if (preg_match('/wordpress\.org\/plugins\/([^\/]+)/', $plugin_data['PluginURI'], $matches)) {
+                return sanitize_title($matches[1]);
+            }
+        }
+    
+        // 3. Extract from directory name
+        if (strpos($plugin_file, '/') !== false) {
+            $directory = dirname($plugin_file);
+            return sanitize_title(basename($directory));
+        }
+    
+        // 4. Fallback to filename without .php
+        return sanitize_title(basename($plugin_file, '.php'));
+    }
+    
+    
+
+
     
     private function get_known_vulnerable_versions($plugin_name) {
         $known_vulnerabilities = [
@@ -1214,7 +1242,6 @@ class AdvancedWordPressSecurityScanner {
         return ['flag' => false];
     }
     
-    //===
     private function render_directory_checkboxes($type, $directories, $current_exclusions) {
         foreach ($directories as $dir) {
             $checked = in_array($dir, $current_exclusions) ? 'checked' : '';
