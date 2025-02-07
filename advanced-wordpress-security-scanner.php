@@ -913,12 +913,26 @@ class AdvancedWordPressSecurityScanner {
         $exclusions = $this->get_scan_exclusions();
         $plugins = get_plugins();
         $scan_results = [];
+
+        // If 'plugins' is in core_files exclusions, skip the entire plugin scan.
+        if (in_array('plugins', $exclusions['core_files'] ?? [])) {
+            error_log('Skipping plugin scan: plugins are fully excluded.');
+            return [
+                'issues' => [],
+                'files_checked' => 0
+            ];
+        }
     
         foreach ($plugins as $plugin_file => $plugin_data) {
             $plugin_slug = $this->get_plugin_slug($plugin_file);
-        
+
             // Skip excluded plugins
-            if (in_array($plugin_slug, $exclusions['plugins'] ?? [])) {
+            $excluded_slugs = array_map(function ($path) {
+                return explode('/', $path)[0]; // Extracts the plugin folder name.
+            }, $exclusions['plugins'] ?? []);
+
+            // Skip excluded plugins
+            if (in_array($plugin_slug, $excluded_slugs)) {
                 continue;
             }
         
