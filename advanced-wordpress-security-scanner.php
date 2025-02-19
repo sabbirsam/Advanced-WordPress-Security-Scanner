@@ -20,6 +20,9 @@ class AdvancedWordPressSecurityScanner {
     public function __construct() {
         add_action('admin_menu', [$this, 'add_security_scanner_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
+
+
+
         add_action('wp_ajax_run_security_scan', [$this, 'run_security_scan']);
         add_action('wp_ajax_get_scan_history', [$this, 'get_scan_history']);
         add_action('wp_ajax_get_specific_scan_details', [$this, 'get_specific_scan_details']); 
@@ -30,9 +33,9 @@ class AdvancedWordPressSecurityScanner {
         wp_enqueue_script('jquery');
         wp_enqueue_script('security-scanner-script', plugin_dir_url(__FILE__) . 'js/scanner.js', ['jquery'], '1.1', true);
         wp_enqueue_style('security-scanner-style', plugin_dir_url(__FILE__) . 'css/scanner.css');
-        wp_localize_script('security-scanner-script', 'securityScannerAjax', [
+        wp_localize_script('security-scanner-script', 'appLocalizer', [
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('security_scan_nonce')
+            'nonce' => wp_create_nonce('wp_rest')
         ]);
     }
 
@@ -62,88 +65,157 @@ class AdvancedWordPressSecurityScanner {
 
     private $security_patterns = [
         'dangerous_functions' => [
-            // Command execution
+            // Command execution (high-risk)
             'eval(', 'system(', 'exec(', 'shell_exec(', 'passthru(', 
-            'proc_open(', 'popen(', 'pcntl_exec(',
-            'assert(', 'create_function(',
+            'proc_open(', 'popen(', 'pcntl_exec(', 'expect_popen(',
+            'assert(', 'create_function(', 'mb_ereg_replace_callback(',
+            'preg_filter(', 'bzopen(', '`', // backtick operator
             
-            // Process manipulation
+            // Process and memory manipulation (high-risk)
             'proc_nice(', 'proc_terminate(', 'proc_close(', 
-            'proc_get_status(', 'proc_open(', 'putenv(',
+            'proc_get_status(', 'proc_open(', 'leak_memory(',
+            'set_time_limit(', 'ignore_user_abort(', 'memory_limit',
+            'pcntl_alarm(', 'pcntl_fork(', 'pcntl_signal(',
             
-            // Potentially dangerous PHP functions
-            'extract(', 'parse_str(', 'putenv(', 'ini_set(',
-            'ini_alter(', 'ini_restore(', 'dl(', 'error_reporting(',
-            'apache_setenv(',
+            // Critical PHP functions (moderate-risk)
+            'ini_alter(', 'ini_restore(', 'dl(', 'apache_setenv(',
+            'ini_set(', 'mail(', 'putenv(', 'mb_send_mail(',
+            'define_syslog_variables(', 'openlog(', 'syslog(',
             
-            // File operations that could be malicious
-            'tmpfile(', 'bzopen(', 'gzopen(', 
-            'chgrp(', 'chmod(', 'chown(', 'copy(',
-            'lchgrp(', 'lchown(', 'link(', 'mkdir(', 'move_uploaded_file(', 
-            'rename(', 'rmdir(', 'symlink(', 'tempnam(', 'touch(',
-            'unlink(', 'imagepng(', 'imagewbmp(', 'image2wbmp(',
-            'imagejpeg(', 'imagexbm(', 'imagegif(', 'imagegd(',
-            'imagegd2(', 'iptcembed(', 'ftp_get(', 'ftp_nb_get(',
-            'file_exists(', 'max_execution_time', 'error_log('
+            // Remote connections (monitor for unexpected usage)
+            'fsockopen(', 'pfsockopen(', 'socket_create(',
+            'socket_connect(', 'socket_bind(', 'socket_listen(',
+            'socket_create_listen(', 'socket_create_pair(',
+            'stream_socket_client(', 'stream_socket_server(',
+            'ssh2_connect(', 'ftp_connect(', 'ftp_ssl_connect('
         ],
         
         'obfuscation_indicators' => [
-            // String manipulation and encoding
-            'base64_decode', 'base64_encode', 'gzinflate', 'gzdeflate',
-            'gzencode', 'gzdecode', 'str_rot13', 'chr(', 'chrfirst(',
-            'bin2hex', 'hex2bin', 'convert_uudecode', 'htmlspecialchars_decode',
-            'rawurldecode', 'stripslashes', 'iconv(', 'sizeof(',
-            'str_replace(', 'strtr(', 'preg_replace(', 'rawurldecode(',
-            'urldecode(', 'htmlspecialchars_decode(', 'htmlentities(',
-            'fromCharCode', 'substr(', 'strrev(', 'chunk_split(',
-            'pack(', 'unescape(', 'unicode', '\\x[0-9a-f]{2}',
-            '\\u[0-9a-f]{4}', '\\[0-7]{3}',
+            // Modern string manipulation and encoding
+            'base64_decode', 'gzinflate', 'gzdeflate', 'gzencode', 
+            'gzdecode', 'str_rot13', 'convert_uudecode', 'fromCharCode',
+            'sodium_crypto_secretbox', 'openssl_encrypt', 'mcrypt_encrypt',
+            'hash_hmac', 'password_hash', 'crypt',
             
-            // JavaScript obfuscation patterns
+            // Advanced obfuscation patterns
+            '\\x[0-9a-f]{2}', // hex encoding
+            '\\u[0-9a-f]{4}', // unicode encoding
+            '\\[0-7]{3}', // octal encoding
+            '&#x[0-9a-f]{2};', // HTML hex encoding
+            '&#\d+;', // HTML decimal encoding
+            '\$\{.\}', // PHP complex variable syntax
+            '\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*\s*\(\s*\$[a-zA-Z_\x7f-\xff]',
+            
+            // JavaScript obfuscation
             'eval\s*\(', 'unescape\s*\(', 'String\.fromCharCode',
-            'parseInt\s*\(.+?,\s*16\)', 'Array\s*\(\d+\)\s*\.join\s*\(\s*[\'"`]\s*[\'"`]\s*\)',
+            'parseInt\s*\(.+?,\s*16\)', 'atob\s*\(', 'btoa\s*\(',
+            'escape\s*\(', 'decodeURIComponent\s*\(', 'encodeURIComponent\s*\(',
+            'Function\s*\(.*\)\s*\(', 'setTimeout\s*\(\s*function\s*\(\s*\)\s*{',
+            'new\s+Function\s*\(', 'window\s*\[\s*[\'"]eval[\'"]\s*\]',
             
-            // Common obfuscated file extensions
-            '\.ph.*p.*$', '\.asp.*x.*$', '\.jspx*$',
-            
-            // Encoded strings patterns
-            'JHshZWxs', 'base64_decode', 'eval\s*\(.*\)',
+            // File extension obfuscation
+            '\.ph(?:p[3-7]?|t|tml|ps|ar|ax|p5|p4|ar)',
+            '\.(?:php|php5|php7|phtml|ph|php4|php3|php2|php1|phps|phpt|pht|phar|pgif|phtml|phtm)$',
+            '\.asp(?:x|\.net)?$',
+            '\.jsp(?:x|f|p)?$',
+            '\.(?:sh|bash|zsh|csh|ksh|tcsh|pl|py|rb|exe|dll|scr|vbs|bat|cmd|ps1|psm1|psd1)$'
         ],
         
         'malware_signatures' => [
-            // Malicious behavior patterns
-            'fsockopen(', 'pfsockopen(', 'stream_socket_client(',
-            'socket_create(', 'stream_socket_pair(', 'stream_socket_server(',
-            'xmlrpc_decode(', 'call_user_func(', 'call_user_func_array(',
-            'create_function(', 'ReflectionFunction(', 'mysql_connect(',
-            'mysql_pconnect(', 'mysqli_connect(', 'mysqli_real_connect(',
-            'pg_connect(', 'pg_pconnect(', 'sqlite_open(', 'sqlite_popen(',
-            'PDO(', 'curl_exec(', 'curl_multi_exec(',
-            
-            // Common malware function names
-            'fx29sh', 'c99sh', 'r57sh', 'shellbot', 'phpshell', 'void\.ru',
-            'phpremoteview', 'directmail', 'bash_history', 'multiviews',
-            'cwings', 'vandal', 'bitchx', 'eggdrop', 'guardservices',
-            'psybnc', 'zombies', 'fulldisclosure', 'php\-security',
-            'milw0rm', 'metasploit', 'slowloris', 'shell_exec',
-            
-            // Malicious content indicators
+            // Modern malware patterns
             'eval\s*\(.*base64_decode\s*\(', 
             'eval\s*\(.*gzinflate\s*\(',
             'eval\s*\(.*str_rot13\s*\(',
             'eval\s*\(.*gzuncompress\s*\(',
-            'eval\s*\(.*strrev\s*\(',
-            'eval\s*\(.*gzdecode\s*\(',
-            'eval\s*\(.*convert_uudecode\s*\(',
-            'eval\s*\(.*unserialize\s*\(',
             '\$GLOBALS\[\$GLOBALS',
             'preg_replace\s*\([\'"]/.*/e[\'"]',
             '(?:\\\\x[0-9a-f]{2}){4,}',
+            '@include\s*[\'"]\w+://',
+            'data:text/html;base64',
+            'data:image/jpg;base64',
+            'PHPShell', 'c99shell', 'r57shell', 'WSO shell',
             
-            // Cryptocurrency mining indicators
+            // Supply chain attack indicators
+            'composer\.json\s+modification',
+            'package\.json\s+modification',
+            'vendor\/.*\/.*\.php\s+modification',
+            'node_modules\/.*\/.*\.js\s+modification',
+            
+            // Cryptocurrency & malicious mining
             'coinhive', 'cryptonight', 'webassembly', 'wasmjit',
             'cryptoloot', 'deepminer', 'coin-hive', 'jsecoin',
-            'minero', 'coinimp', 'webmine', 'monerominer'
+            'minero', 'coinimp', 'webmine', 'monerominer',
+            'cryptojacking', 'monero', 'pool.supportxmr.com',
+            'xmrig', 'nanopool', 'minergate', 'nicehash',
+            
+            // Ransomware indicators
+            '\.locked$', '\.encrypted$', '\.crypto$', '\.crypt$',
+            'DECRYPT_INSTRUCTION', 'HOW_TO_DECRYPT',
+            'YOUR_FILES_ARE_ENCRYPTED', 'YOUR_FILES_ARE_LOCKED',
+            
+            // Backdoor and remote access
+            'backdoor', 'rootkit', 'webshell', 'reverse shell',
+            'netcat', 'bind shell', 'reverse_tcp', 'meterpreter',
+            'remote access', 'remote control', 'remoteview',
+            
+            // File upload vulnerabilities
+            'move_uploaded_file\s*\(.*\.ph',
+            'move_uploaded_file\s*\(.*\.asp',
+            'move_uploaded_file\s*\(.*\.jsp',
+            'move_uploaded_file\s*\(.*\.cgi',
+            
+            // SQL Injection attempts
+            'UNION\s+SELECT', 'UNION\s+ALL\s+SELECT',
+            'INSERT\s+INTO.*SELECT', 'UPDATE.*SET.*SELECT',
+            'DELETE\s+FROM.*WHERE.*SELECT',
+            
+            // XSS patterns
+            '<script.*?>.*?<\/script>', 
+            'javascript:', 'vbscript:', 'livescript:',
+            'onload=', 'onerror=', 'onmouseover=',
+            
+            // File inclusion
+            'include\s*\(\s*[\'"]https?://',
+            'include\s*\(\s*[\'"]ftp://',
+            'require\s*\(\s*[\'"]https?://',
+            'require\s*\(\s*[\'"]ftp://',
+            
+            // Known exploit kits
+            'Angler', 'BlackHole', 'Nuclear', 'Magnitude',
+            'RIG', 'Terror', 'GrandSoft', 'KaiXin',
+            'Spelevo', 'Fallout', 'GreenFlash', 'Underminer'
+        ],
+        
+        'suspicious_behaviors' => [
+            // Suspicious file operations
+            'fwrite\s*\(\s*\$.*\.ph',
+            'file_put_contents\s*\(\s*\$.*\.ph',
+            'fputs\s*\(\s*\$.*\.ph',
+            
+            // Network behavior
+            'curl_setopt\s*\(\s*\$.*CURLOPT_URL',
+            'wget\s+http', 'lynx\s+http',
+            'GET\s+http', 'POST\s+http',
+            
+            // Database manipulation
+            'DROP\s+TABLE', 'TRUNCATE\s+TABLE',
+            'ALTER\s+TABLE.*DROP',
+            'DELETE\s+FROM\s+wp_',
+            
+            // Suspicious WordPress actions
+            'wp_insert_user\s*\(\s*array\s*\(',
+            'wp_set_auth_cookie\s*\(\s*\$',
+            'wp_set_current_user\s*\(\s*\$',
+            
+            // Plugin/Theme manipulation
+            'activate_plugin\s*\(\s*\$',
+            'switch_theme\s*\(\s*\$',
+            'wp_update_plugin\s*\(\s*\$',
+            
+            // Option manipulation
+            'update_option\s*\(\s*\$',
+            'add_option\s*\(\s*\$',
+            'delete_option\s*\(\s*\$'
         ]
     ];
 
@@ -164,6 +236,7 @@ class AdvancedWordPressSecurityScanner {
 
     public function security_scanner_dashboard() {
         $exclusions = $this->get_scan_exclusions();
+       
         ?>
         <div class="wrap security-scanner-dashboard">
             <h1>Advanced WordPress Security Scanner</h1>
@@ -245,7 +318,7 @@ class AdvancedWordPressSecurityScanner {
 
     
     public function get_specific_scan_details() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
+        check_ajax_referer('wp_rest', 'nonce');
         $scan_index = isset($_POST['scan_index']) ? intval($_POST['scan_index']) : -1;
         $history = get_option($this->scan_history_option, []);
         if ($scan_index >= 0 && $scan_index < count($history)) {
@@ -257,7 +330,7 @@ class AdvancedWordPressSecurityScanner {
 
 
     public function run_security_scan() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
+        check_ajax_referer('wp_rest', 'nonce');
         
         $scan_type = isset($_POST['scan_type']) ? sanitize_text_field($_POST['scan_type']) : 'initialize';
         $session_id = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : null;
@@ -327,6 +400,8 @@ class AdvancedWordPressSecurityScanner {
         $paths = array_keys($this->scan_paths);
         $current_path = $paths[$scan_data['current_path_index']];
         $exclusions = $this->get_scan_exclusions();
+
+        error_log('Exclusions 1: ' . print_r($exclusions, true));
 
         // error_log('Processing path: ' . $current_path);
         // error_log('Exclusions: ' . print_r($exclusions, true));
@@ -716,6 +791,8 @@ class AdvancedWordPressSecurityScanner {
 
     private function deep_security_scan($path, $path_type, $exclusions) {
         $exclusions = $this->get_scan_exclusions();
+
+        error_log('Exclusions 2: ' . print_r($exclusions, true));
          // Check if this path type is excluded
          if (in_array($path_type, $exclusions['core_files'] ?? []) ||
          in_array($path_type, $exclusions['plugins'] ?? []) ||
@@ -875,7 +952,7 @@ class AdvancedWordPressSecurityScanner {
 
     // Exclude 
     public function update_scan_exclusions() {
-        check_ajax_referer('security_scan_nonce', 'nonce');
+        check_ajax_referer('wp_rest', 'nonce');
         
         $exclusions = [
             'paths' => isset($_POST['paths']) ? 
@@ -911,6 +988,8 @@ class AdvancedWordPressSecurityScanner {
     public function check_plugin_vulnerabilities() {
         $issues = [];
         $exclusions = $this->get_scan_exclusions();
+
+        error_log('Exclusions 3: ' . print_r($exclusions, true));
         $plugins = get_plugins();
         $scan_results = [];
 

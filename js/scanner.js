@@ -48,11 +48,11 @@ jQuery(document).ready(function($) {
 
     function runScanPhase(phase, session_id = null) {
         $.ajax({
-            url: securityScannerAjax.ajax_url,
+            url: appLocalizer.ajax_url,
             type: 'POST',
             data: {
                 action: 'run_security_scan',
-                nonce: securityScannerAjax.nonce,
+                nonce: appLocalizer.nonce,
                 scan_type: phase,
                 session_id: session_id
             },
@@ -158,7 +158,7 @@ jQuery(document).ready(function($) {
 
         var formData = {
             action: 'update_scan_exclusions',
-            nonce: securityScannerAjax.nonce,
+            nonce: appLocalizer.nonce,
             paths: $('#exclude-paths').val(),
             file_patterns: $('#exclude-file-patterns').val(),
             php_functions: $('#exclude-functions').val(),
@@ -181,7 +181,7 @@ jQuery(document).ready(function($) {
         });
 
         $.ajax({
-            url: securityScannerAjax.ajax_url,
+            url: appLocalizer.ajax_url,
             type: 'POST',
             data: formData,
             success: function(response) {
@@ -275,11 +275,11 @@ jQuery(document).ready(function($) {
 
     function loadScanHistory() {
         $.ajax({
-            url: securityScannerAjax.ajax_url,
+            url: appLocalizer.ajax_url,
             type: 'POST',
             data: {
                 action: 'get_scan_history',
-                nonce: securityScannerAjax.nonce
+                nonce: appLocalizer.nonce
             },
             success: function(response) {
                 var $historyBody = $('#scan-history-body');
@@ -310,11 +310,11 @@ jQuery(document).ready(function($) {
 
     function fetchScanDetails(scanIndex) {
         $.ajax({
-            url: securityScannerAjax.ajax_url,
+            url: appLocalizer.ajax_url,
             type: 'POST',
             data: {
                 action: 'get_specific_scan_details',
-                nonce: securityScannerAjax.nonce,
+                nonce: appLocalizer.nonce,
                 scan_index: scanIndex
             },
             success: function(response) {
